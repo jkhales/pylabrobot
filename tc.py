@@ -1,11 +1,24 @@
+import enum
+from functools import wraps
 import os
 import platform
 import textwrap
 import xml
 import xml.etree.ElementTree as ET
+import re
+import asyncio
+from typing import List
 
 import requests
 
+SOAP_NAMESPACE = {
+    'SOAP-ENV': 'http://schemas.xmlsoap.org/soap/envelope/',
+    's': 'http://sila.coop'
+}
+
+class DeviceState(enum.Enum):
+  IDLE = 'idle'
+  BUSY = 'busy'
 
 class ThermoCyclerStep:
   def __init__(self, temperature: float, duration: float, lid_temperature: float, slope: float):
@@ -14,7 +27,19 @@ class ThermoCyclerStep:
     self.lid_temperature = lid_temperature
     self.slope = slope
 
-from typing import List
+def wait_until_idle(method):
+    @wraps(method)
+    async def wrapper(self, *args, **kwargs):
+        res = await method(self, *args, **kwargs)
+        while True:
+            if await self.get_state() == DeviceState.IDLE:
+                break
+            await asyncio.sleep(1)
+
+        return res
+
+    return wrapper
+
 class ThermoCycler:
   def __init__(self, ip: str) -> None:
     self.ip = ip
@@ -28,8 +53,8 @@ class ThermoCycler:
   async def get_device_ip(cls):
     # list devices using arp
     arp_entries = []
-    platform = platform.system()
-    if platform.lower() == 'Windows':
+    platform_name = platform.system()
+    if platform_name.lower() == 'windows':
       # Windows: Internet Address, Physical Address, Type
       pattern = re.compile(r"(\d{1,3}(?:\.\d{1,3}){3})\s+([0-9a-fA-F\-]{17})\s+(\w+)")
       for match in pattern.finditer(output):
@@ -39,7 +64,7 @@ class ThermoCycler:
           'Type': match.group(3),
           'Name': None  # Windows doesn't show a name in arp -a output
         })
-    elif platform.lower() == 'Darwin' or platform.lower() == 'Linux':
+    elif platform_name.lower() == 'darwin' or platform_name.lower() == 'Linux':
       # macOS & Linux: Optional Name, IP Address, MAC Address
       pattern = re.compile(r"(?:(\S+)\s+)?\((\d{1,3}(?:\.\d{1,3}){3})\)\s+at\s+([0-9a-fA-F\:]{17})")
       for match in pattern.finditer(output):
@@ -121,7 +146,7 @@ class ThermoCycler:
     # req = textwrap.dedent(req).replace("\n", "")
     # remove all white space before each line
     req = " ".join([line.lstrip() for line in req.split("\n")])
-    print(req)
+    # print(req)
 
     res = requests.post(
       f"http://{self.ip}:{self.port}/",
@@ -132,14 +157,21 @@ class ThermoCycler:
       },
       timeout=self.timeout
     )
-    print(res.text)
+    # print(res.text)
     return res
 
-  def open_door(self):
+  @wait_until_idle
+  async def open_door(self):
     return self.send_command("OpenDoor")
 
-  def close_door(self):
+  @wait_until_idle
+  async def close_door(self):
     return self.send_command("CloseDoor")
 
   def get_status1(self):
     return self.send_command("GetStatus")
+
+  async def get_state(self) -> DeviceState:
+    status = self.get_status1()
+    root = ET.fromstring(status.text)
+    return DeviceState(root.find('.//s:state', SOAP_NAMESPACE).text)
