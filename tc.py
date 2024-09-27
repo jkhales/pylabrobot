@@ -168,6 +168,10 @@ class ThermoCycler:
   async def close_door(self):
     return self.send_command("CloseDoor")
 
+  @wait_until_idle
+  async def stop(self):
+    return self.send_command("StopMethod")
+
   def get_status1(self):
     return self.send_command("GetStatus")
 
