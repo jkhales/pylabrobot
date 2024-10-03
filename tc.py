@@ -306,7 +306,7 @@ class ThermoCycler:
 
     command_id = 980077706
 
-    def send_command(self, command: str):
+    def send_command(self, command: str, params: str = ""):
         ThermoCycler.command_id += 1
         req = f"""<s:Envelope
       xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
@@ -316,9 +316,13 @@ class ThermoCycler:
           xmlns:i="http://www.w3.org/2001/XMLSchema-instance">
           <requestId>{ThermoCycler.command_id}</requestId>
           <lockId i:nil="true"/>
+          <ParamsXML>
+          {params}
+          </ParamsXML>
         </{command}>
       </s:Body>
     </s:Envelope>"""
+        # print(req)
         # req = textwrap.dedent(req).replace("\n", "")
         # remove all white space before each line
         req = " ".join([line.lstrip() for line in req.split("\n")])
@@ -355,54 +359,3 @@ class ThermoCycler:
         status = self.get_status1()
         root = ET.fromstring(status.text)
         return DeviceState(root.find(".//s:state", SOAP_NAMESPACE).text)
-
-
-###################
-# ChatGPT PID guess
-###################
-
-# what do you think this means?
-#   <PIDSet>
-#     <PID number="1">
-#       <PHeating>60</PHeating>
-#       <PCooling>80</PCooling>
-#       <IHeating>250</IHeating>
-#       <ICooling>100</ICooling>
-#       <DHeating>10</DHeating>
-#       <DCooling>10</DCooling>
-#       <PLid>100</PLid>
-#       <ILid>70</ILid>
-#     </PID>
-#   </PIDSet>
-
-# This XML snippet defines a PID set for an unknown device, likely controlling both heating and cooling systems, and possibly a lid temperature in a thermal control device (e.g., an ODTC or other temperature-regulating equipment). Let's break it down:
-
-# Interpretation:
-# <PIDSet>: This is the container for one or more PID controllers.
-
-# <PID number="1">: This defines the first (and possibly only) PID controller in the set. The attributes within this element are likely used for regulating heating, cooling, and possibly the lid of a thermal control device.
-
-# PID Parameters for Heating and Cooling:
-# <PHeating>60</PHeating>: This represents the proportional gain (Kp) for heating. A value of 60 means the controller will respond relatively aggressively to errors in temperature during heating, correcting the current error based on this gain.
-
-# <PCooling>80</PCooling>: The proportional gain (Kp) for cooling. A value of 80 means the system will respond even more aggressively when cooling, possibly because cooling is slower than heating and needs stronger feedback.
-
-# <IHeating>250</IHeating>: The integral gain (Ki) for heating. A high value of 250 means that accumulated errors (i.e., persistent differences between the setpoint and actual temperature) during heating are corrected over time. This reduces the steady-state error but could introduce oscillations if set too high.
-
-# <ICooling>100</ICooling>: The integral gain (Ki) for cooling. A value of 100 corrects past errors during cooling, but less aggressively than heating. This indicates a less aggressive adjustment to past errors compared to heating.
-
-# <DHeating>10</DHeating>: The derivative gain (Kd) for heating. A value of 10 suggests that the system will use the rate of change of the error to prevent overshooting during heating. This is a moderate value to smooth out rapid temperature changes.
-
-# <DCooling>10</DCooling>: The derivative gain (Kd) for cooling. It is the same as the heating derivative gain, which suggests the system has similar requirements for damping oscillations in both heating and cooling processes.
-
-# PID Parameters for the Lid:
-# <PLid>100</PLid>: The proportional gain for controlling the temperature of the lid. A high value of 100 means the system will react strongly to errors in the lid’s temperature.
-
-# <ILid>70</ILid>: The integral gain for the lid temperature control. A value of 70 indicates moderate correction of past errors for the lid, allowing for smooth and consistent control over time without too much overshoot.
-
-# Summary:
-# This XML configuration defines a PID controller for:
-
-# Heating and cooling processes with separate proportional (P), integral (I), and derivative (D) gains.
-# A lid temperature control system with its own PID settings (proportional and integral, but no derivative term).
-# Each of these settings fine-tunes how the device responds to temperature errors during heating, cooling, and lid control, with aggressive responses for proportional gains, and integral adjustments for accumulated errors. The specific values suggest the device requires more careful control during cooling and lid heating, likely due to thermal inertia or sensitivity to temperature fluctuations in these components.
